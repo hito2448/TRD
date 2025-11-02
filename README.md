@@ -1,6 +1,6 @@
 # CRD
 
-PyTorch Implementation of "Multimodal Industrial Anomaly Detection by Crossmodal Reverse Distillation".
+PyTorch Implementation of "Tuned Reverse Distillation: Enhancing Multimodal Industrial Anomaly Detection with Crossmodal Tuners".
 [paper](https://arxiv.org/abs/2412.08949)
 
 **_Anomaly Detection Process_**:
