@@ -1,4 +1,4 @@
-# CRD
+# TRD
 
 PyTorch Implementation of "Tuned Reverse Distillation: Enhancing Multimodal Industrial Anomaly Detection with Crossmodal Tuners".
 [paper](https://arxiv.org/abs/2412.08949)
