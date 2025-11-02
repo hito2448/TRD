@@ -9,8 +9,9 @@ from models.decoders import ResNet50DualModalDecoder
 from utils.losses import *
 from evaluation.eval_utils import cal_anomaly_map
 from scipy.ndimage import gaussian_filter
-from evaluation.pro_curve_util import compute_pro
 from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import precision_recall_curve
+from evaluation.metrics_utils import calculate_au_pro
 
 
 def setup_seed(seed):
@@ -22,6 +23,14 @@ def setup_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def f1_score_max(y_true, y_score):
+    precs, recs, thrs = precision_recall_curve(y_true, y_score)
+
+    f1s = 2 * precs * recs / (precs + recs + 1e-7)
+    f1s = f1s[:-1]
+    return f1s.max()
+
+
 def train_one_epoch(teacher_rgb, teacher_depth, student_rgb, student_depth, train_dataloader, optimizer_rgb, optimizer_depth, device, log, epoch):
     loss_rgb_list = []
     loss_depth_list = []
@@ -29,7 +38,6 @@ def train_one_epoch(teacher_rgb, teacher_depth, student_rgb, student_depth, trai
         rgb_image, depth_image, _, _, _ = data
         rgb_image = rgb_image.to(device)
         depth_image = depth_image.to(device)
-        # depth_image = torch.cat([depth_image, depth_image, depth_image], dim=1)
 
         with torch.no_grad():
             output_Tr = teacher_rgb(rgb_image)
@@ -53,6 +61,8 @@ def train_one_epoch(teacher_rgb, teacher_depth, student_rgb, student_depth, trai
         optimizer_depth.step()
 
     print('epoch %d, loss_rgb: %.10f, loss_depth: %.10f' % (epoch + 1, np.mean(loss_rgb_list), np.mean(loss_depth_list)))
+    print(
+        'epoch %d, loss_rgb: %.10f, loss_depth: %.10f' % (epoch + 1, np.mean(loss_rgb_list), np.mean(loss_depth_list)), file=log)
 
     return
 
@@ -127,6 +137,7 @@ def train(device, classname, data_root, log, epochs, learning_rate, batch_size, 
 
     params = valid(teacher_rgb, teacher_depth, student_rgb, student_depth, valid_dataloader, device)
     print(params)
+    print(params,file=log)
     test(teacher_rgb, teacher_depth, student_rgb, student_depth, test_dataloader, device, log, epochs - 1, classname,
          data_root, ckp_path, params)
 
@@ -161,8 +172,8 @@ def test(teacher_rgb, teacher_depth, student_rgb, student_depth, test_dataloader
             _, _, _, output_Srgb = student_rgb(output_Trgb, output_Td)
             _, _, _, output_Sd = student_depth(output_Td, output_Trgb)
 
-            anomaly_map_rgb, _ = cal_anomaly_map(output_Srgb, output_Trgb, amap_mode='add')
-            anomaly_map_depth, _ = cal_anomaly_map(output_Sd, output_Td, amap_mode='add')
+            anomaly_map_rgb, _ = cal_anomaly_map(output_Srgb, output_Trgb, out_size=img_size, amap_mode='add')
+            anomaly_map_depth, _ = cal_anomaly_map(output_Sd, output_Td, out_size=img_size, amap_mode='add')
 
             if params is not None:
                 anomaly_map_rgb = (anomaly_map_rgb - params[0]) / params[1]
@@ -195,16 +206,21 @@ def test(teacher_rgb, teacher_depth, student_rgb, student_depth, test_dataloader
             predictions_d.append(anomaly_map_depth)  # * (256,256)
 
         print('-----------------------testing %d epoch-----------------------' % (epoch + 1))
+        print('-----------------------testing %d epoch-----------------------' % (epoch + 1), file=log)
 
 
         print('add:')
+        print('add:', file=log)
         test_metric(gt_list_px, pr_list_px, gt_list_sp, pr_list_sp, predictions, gts)
 
         print('rgb:')
+        print('rgb:', file=log)
         test_metric(gt_list_px, pr_list_px_r, gt_list_sp, pr_list_sp_r, predictions_r, gts)
 
         print('depth:')
+        print('depth:', file=log)
         test_metric(gt_list_px, pr_list_px_d, gt_list_sp, pr_list_sp_d, predictions_d, gts)
+
 
     return
 
@@ -216,13 +232,24 @@ def test_metric(gt_list_px, pr_list_px, gt_list_sp, pr_list_sp, predictions, gts
     ap_px = average_precision_score(gt_list_px, pr_list_px)
     ap_sp = average_precision_score(gt_list_sp, pr_list_sp)
 
-    pro = compute_pro(predictions, gts)
-    pro_1 = compute_pro(predictions, gts, integration_limit=0.01)
+    f1_px = f1_score_max(gt_list_px, pr_list_px)
+    f1_sp = f1_score_max(gt_list_sp, pr_list_sp)
 
-    print(" I-AUROC | P-AUROC | P-PRO |  I-AP | P-AP")
+    au_pros, _ = calculate_au_pro(gts, predictions)
+    pro = au_pros[0]
+    pro_10 = au_pros[1]
+    pro_5 = au_pros[2]
+    pro_1 = au_pros[3]
+
+    print(" I-AUROC | P-AUROC | AUPRO@30% | AUPRO@10% | AUPRO@5% | AUPRO@1% |   I-AP   |   P-AP   |   I-F1   |   P-F1")
     print(
-        f'  {auroc_sp:.3f}  |  {auroc_px:.3f}  | {pro:.3f} | {ap_sp:.3f} | {ap_px:.3f}',
+        f'  {auroc_sp:.3f}  |  {auroc_px:.3f}  |   {pro:.3f}   |   {pro_10:.3f}   |   {pro_5:.3f}  |   {pro_1:.3f}  |   {ap_sp:.3f}  |   {ap_px:.3f}  |   {f1_sp:.3f}  |   {f1_px:.3f}',
         end='\n')
+
+    print(" I-AUROC | P-AUROC | AUPRO@30% | AUPRO@10% | AUPRO@5% | AUPRO@1% |   I-AP   |   P-AP   |   I-F1   |   P-F1", file=log)
+    print(
+        f'  {auroc_sp:.3f}  |  {auroc_px:.3f}  |   {pro:.3f}   |   {pro_10:.3f}   |   {pro_5:.3f}  |   {pro_1:.3f}  |   {ap_sp:.3f}  |   {ap_px:.3f}  |   {f1_sp:.3f}  |   {f1_px:.3f}',
+        end='\n', file=log)
 
 
 def valid(teacher_rgb, teacher_depth, student_rgb, student_depth, valid_dataloader, device):
@@ -233,7 +260,6 @@ def valid(teacher_rgb, teacher_depth, student_rgb, student_depth, valid_dataload
             rgb_image, depth_image, _, _, _ = data
             rgb_img = rgb_image.to(device)
             depth_img = depth_image.to(device)
-            # depth_img = torch.cat([depth_img, depth_img, depth_img], dim=1)
 
             with torch.no_grad():
                 output_Trgb = teacher_rgb(rgb_img)
@@ -242,8 +268,8 @@ def valid(teacher_rgb, teacher_depth, student_rgb, student_depth, valid_dataload
                 _, _, _, output_Srgb = student_rgb(output_Trgb, output_Td)
                 _, _, _, output_Sd = student_depth(output_Td, output_Trgb)
 
-                anomaly_map_rgb, _ = cal_anomaly_map(output_Srgb, output_Trgb, amap_mode='add')
-                anomaly_map_depth, _ = cal_anomaly_map(output_Sd, output_Td, amap_mode='add')
+                anomaly_map_rgb, _ = cal_anomaly_map(output_Srgb, output_Trgb, out_size=img_size, amap_mode='add')
+                anomaly_map_depth, _ = cal_anomaly_map(output_Sd, output_Td, out_size=img_size, amap_mode='add')
 
                 a_rgb.append(anomaly_map_rgb)
                 a_depth.append(anomaly_map_depth)
@@ -262,15 +288,16 @@ def valid(teacher_rgb, teacher_depth, student_rgb, student_depth, valid_dataload
 
 if __name__ == "__main__":
 
+    setup_seed(111)
+
     classnames = ['bagel', 'cable_gland', 'carrot', 'cookie', 'dowel', 'foam', 'peach', 'potato', 'rope', 'tire']
 
     learning_rate = 0.005
     batch_size = 16
     img_size = 256
-    data_root = './data/mvtec_3d_anomaly_detection/'
+    data_root = '../data/mvtec_3d_anomaly_detection/'
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    log = None
-    # ckp = './checkpoints/CRD_mvtec3d_rgb_depth_seed42/'
+    log = open("./logs/CRD_mvtec3d_rgb_depth_seed42.txt",'a')
     ckp = None
 
     for i in range(len(classnames)):
@@ -279,4 +306,6 @@ if __name__ == "__main__":
         epochs_i = 200
         print('-----------------------training on ' + classname + '[%d / %d]-----------------------' % (
             i + 1, len(classnames)))
+        print('-----------------------training on ' + classname + '[%d / %d]-----------------------' % (
+            i + 1, len(classnames)), file=log)
         train(device, classname, data_root, log, epochs_i, learning_rate, batch_size, img_size, ckp)
