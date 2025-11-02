@@ -6,8 +6,8 @@ PyTorch Implementation of "Tuned Reverse Distillation: Enhancing Multimodal Indu
 ---
 
 ### 🔥 Update (2025)
-We have **updated the experimental settings** and achieved **new state-of-the-art (SOTA) performance** on the **MVTec 3D-AD** dataset by introducing surface normal maps as the 3D modality, while keeping all other settings consistent with the original implementation.  
-
+We have updated the experimental settings and achieved **new SOTA performance** on the **MVTec 3D-AD** dataset by introducing surface normal maps as the 3D modality, while keeping all other settings consistent with the original implementation.  
+![image](https://github.com/hito2448/CRD/blob/main/MVTec3D.jpg)
 
 ---
 
