@@ -20,8 +20,8 @@ We have updated the experimental settings and achieved **new SOTA performance** 
 ## 1. Environment
 Create a new conda environment firstly.
 ```
-conda create -n CRD python=3.8
-conda activate CRD
+conda create -n TRD python=3.8
+conda activate TRD
 pip install -r requirements.txt
 ```
 
@@ -71,7 +71,7 @@ To get the training and inference results, simply execute the following command.
 
 For MVTec 3D AD Dataset:
 ```bash
-python train_MVTec3D.py
+python train_MVTec3D_rgbn.py
 ```
 
 For Eyecandies Dataset:
