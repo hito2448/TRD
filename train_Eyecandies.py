@@ -9,8 +9,8 @@ from models.decoders import ResNet50DualModalDecoder
 from utils.losses import *
 from evaluation.eval_utils import cal_anomaly_map
 from scipy.ndimage import gaussian_filter
-from evaluation.pro_curve_util import compute_pro
 from sklearn.metrics import roc_auc_score, average_precision_score
+from evaluation.metrics_utils import calculate_au_pro
 
 
 def setup_seed(seed):
@@ -20,6 +20,14 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def f1_score_max(y_true, y_score):
+    precs, recs, thrs = precision_recall_curve(y_true, y_score)
+
+    f1s = 2 * precs * recs / (precs + recs + 1e-7)
+    f1s = f1s[:-1]
+    return f1s.max()
 
 
 def train_one_epoch(teacher_rgb, teacher_depth, student_rgb, student_depth, train_dataloader, optimizer_rgb, optimizer_depth, device, log, epoch):
@@ -216,13 +224,24 @@ def test_metric(gt_list_px, pr_list_px, gt_list_sp, pr_list_sp, predictions, gts
     ap_px = average_precision_score(gt_list_px, pr_list_px)
     ap_sp = average_precision_score(gt_list_sp, pr_list_sp)
 
-    pro = compute_pro(predictions, gts)
-    pro_1 = compute_pro(predictions, gts, integration_limit=0.01)
+    f1_px = f1_score_max(gt_list_px, pr_list_px)
+    f1_sp = f1_score_max(gt_list_sp, pr_list_sp)
 
-    print(" I-AUROC | P-AUROC | P-PRO |  I-AP | P-AP")
+    au_pros, _ = calculate_au_pro(gts, predictions)
+    pro = au_pros[0]
+    pro_10 = au_pros[1]
+    pro_5 = au_pros[2]
+    pro_1 = au_pros[3]
+
+    print(" I-AUROC | P-AUROC | AUPRO@30% | AUPRO@10% | AUPRO@5% | AUPRO@1% |   I-AP   |   P-AP   |   I-F1   |   P-F1")
     print(
-        f'  {auroc_sp:.3f}  |  {auroc_px:.3f}  | {pro:.3f} | {ap_sp:.3f} | {ap_px:.3f}',
+        f'  {auroc_sp:.3f}  |  {auroc_px:.3f}  |   {pro:.3f}   |   {pro_10:.3f}   |   {pro_5:.3f}  |   {pro_1:.3f}  |   {ap_sp:.3f}  |   {ap_px:.3f}  |   {f1_sp:.3f}  |   {f1_px:.3f}',
         end='\n')
+
+    print(" I-AUROC | P-AUROC | AUPRO@30% | AUPRO@10% | AUPRO@5% | AUPRO@1% |   I-AP   |   P-AP   |   I-F1   |   P-F1", file=log)
+    print(
+        f'  {auroc_sp:.3f}  |  {auroc_px:.3f}  |   {pro:.3f}   |   {pro_10:.3f}   |   {pro_5:.3f}  |   {pro_1:.3f}  |   {ap_sp:.3f}  |   {ap_px:.3f}  |   {f1_sp:.3f}  |   {f1_px:.3f}',
+        end='\n', file=log)
 
 
 def valid(teacher_rgb, teacher_depth, student_rgb, student_depth, valid_dataloader, device):
