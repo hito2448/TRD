@@ -21,11 +21,6 @@ def get_max_min_depth_img(image_path):
 
 
 def depth_to_normal_map(depth, k=5, mask=None):
-    """
-    Convert depth map (H, W) to normal map (H, W, 3)
-    depth: numpy array, depth in float (missing background可为0)
-    mask: optional foreground mask (1 for foreground)
-    """
     dzdx = cv2.Sobel(depth, cv2.CV_64F, 1, 0, ksize=k)
     dzdy = cv2.Sobel(depth, cv2.CV_64F, 0, 1, ksize=k)
 
